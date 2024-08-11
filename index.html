@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>나의 일기</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Quill Editor CSS -->
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .card {
+            margin-bottom: 15px;
+        }
+        .diary-entry-title {
+            cursor: pointer;
+        }
+        .quill-editor {
+            height: 150px;
+        }
+        .ql-container {
+            height: 150px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">나의 일기</h1>
+        <div class="mb-3">
+            <input type="text" id="title" class="form-control" placeholder="제목을 입력하세요">
+        </div>
+        <div class="mb-3">
+            <div id="editor" class="quill-editor"></div>
+        </div>
+        <button id="save-btn" class="btn btn-primary">저장</button>
+
+        <h3 class="mt-5">일기 목록</h3>
+        <div id="diary-list" class="row">
+            <!-- 일기 카드가 여기에 추가됩니다 -->
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+      // Import the functions you need from the SDKs you need
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+      import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+      // Your web app's Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyAUUbc7yrGmFHJRhAMjHSFhYXGnjUkUYAo",
+        authDomain: "mydiary-a4ce7.firebaseapp.com",
+        projectId: "mydiary-a4ce7",
+        storageBucket: "mydiary-a4ce7.appspot.com",
+        messagingSenderId: "901867083142",
+        appId: "1:901867083142:web:a4c58c0d6c1584cff28807"
+      };
+
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+
+      // Quill 에디터 초기화
+      var quill = new Quill('#editor', {
+          theme: 'snow'
+      });
+
+      // 일기 목록을 Firestore에서 불러오기
+      async function loadDiaries() {
+          const diaryList = document.getElementById('diary-list');
+          diaryList.innerHTML = '';
+
+          const querySnapshot = await getDocs(collection(db, "diaries"));
+          querySnapshot.forEach((doc) => {
+              const entry = doc.data();
+              const card = document.createElement('div');
+              card.className = 'col-sm-4';
+              card.innerHTML = `
+                  <div class="card">
+                      <div class="card-body">
+                          <h5 class="card-title diary-entry-title" data-id="${doc.id}">${entry.title}</h5>
+                          <p class="card-text"><small class="text-muted">${entry.date}</small></p>
+                          <button class="btn btn-danger btn-sm delete-btn" data-id="${doc.id}">삭제</button>
+                      </div>
+                  </div>
+              `;
+              diaryList.appendChild(card);
+          });
+
+          // 일기 제목 클릭 이벤트에 팝업창 표시
+          document.querySelectorAll('.diary-entry-title').forEach(titleElement => {
+              titleElement.addEventListener('click', async function () {
+                  const id = this.getAttribute('data-id');
+                  const docRef = doc(db, "diaries", id);
+                  const docSnap = await getDoc(docRef);
+                  if (docSnap.exists()) {
+                      const entry = docSnap.data();
+                      showPopup(entry.title, entry.content);
+                  }
+              });
+          });
+
+          // 삭제 버튼 클릭 이벤트 처리
+          document.querySelectorAll('.delete-btn').forEach(deleteButton => {
+              deleteButton.addEventListener('click', async function () {
+                  const id = this.getAttribute('data-id');
+                  await deleteDoc(doc(db, "diaries", id));
+                  loadDiaries();
+              });
+          });
+      }
+
+      loadDiaries(); // 페이지 로드 시 일기 목록 불러오기
+
+      // 저장 버튼 클릭 이벤트
+      document.getElementById('save-btn').addEventListener('click', async function () {
+          const title = document.getElementById('title').value;
+          const content = quill.root.innerHTML; // Quill 에디터에서 HTML 콘텐츠 가져오기
+          const date = new Date().toLocaleString();
+
+          if (title && content) {
+              await addDoc(collection(db, "diaries"), {
+                  title: title,
+                  content: content,
+                  date: date
+              });
+              document.getElementById('title').value = '';
+              quill.setText(''); // 에디터 내용 초기화
+              loadDiaries();
+          } else {
+              alert('제목과 내용을 입력하세요.');
+          }
+      });
+
+      // 팝업창을 표시하는 함수
+      function showPopup(title, content) {
+          const popup = document.createElement('div');
+          popup.className = 'modal fade';
+          popup.tabIndex = '-1';
+          popup.innerHTML = `
+              <div class="modal-dialog">
+                  <div class="modal-content">
+                      <div class="modal-header">
+                          <h5 class="modal-title">${title}</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                      </div>
+                      <div class="modal-body">
+                          ${content}
+                      </div>
+                      <div class="modal-footer">
+                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                      </div>
+                  </div>
+              </div>
+          `;
+          document.body.appendChild(popup);
+          new bootstrap.Modal(popup).show();
+
+          // 팝업 닫힐 때 DOM에서 제거
+          popup.addEventListener('hidden.bs.modal', function () {
+              document.body.removeChild(popup);
+          });
+      }
+    </script>
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+    <!-- Quill Editor JS -->
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+</body>
+</html>
